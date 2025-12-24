@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang='en'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>Azar Finance</title>
+<link rel='stylesheet' href='/static/css/style.css'>
+</head>
+<body>
+<header>
+<img src='/static/images/logo.png' alt='Logo'>
+<h1>Azar Finance</h1>
+</header>
+<main>
+<h2>Create Loan</h2>
+<form action='/create_loan' method='post'>
+<input type='text' name='client_name' placeholder='Client Name' required>
+<input type='number' name='amount' placeholder='Amount' required>
+<button type='submit'>Create Loan</button>
+</form>
+<h2>Loans</h2>
+<ul>
+{% for loan in loans %}
+<li>{{loan.client_name}} - {{loan.amount}} - {{loan.status}}
+{% if loan.status == 'pending' %}
+<form action='/approve_loan/{{loan.id}}' method='post'>
+<input type='password' name='pin' placeholder='Admin PIN' required>
+<button type='submit'>Approve</button>
+</form>
+{% elif loan.status == 'approved' %}
+<form action='/collect/{{loan.id}}' method='post'>
+<button type='submit'>Collect</button>
+</form>
+{% endif %}
+</li>
+{% endfor %}
+</ul>
+<form action='/export_csv'>
+<button type='submit'>Export CSV</button>
+</form>
+</main>
+<footer>
+<p>&copy; 2025 Azar Finance</p>
+</footer>
+</body>
+</html>

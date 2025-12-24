@@ -1,124 +1,57 @@
-
-from flask import Flask, render_template, request, redirect, session
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, request, redirect, url_for, flash
 from datetime import datetime
+import csv, os
 
 app = Flask(__name__)
-app.secret_key = "azar-secret"
+app.secret_key = 'your_secret_key_here'
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///azar.db"
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-db = SQLAlchemy(app)
+loans = []
 
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100))
-    phone = db.Column(db.String(20), unique=True)
-    role = db.Column(db.String(20))
-    password = db.Column(db.String(50))
+@app.route('/')
+def index():
+    return render_template('index.html', loans=loans)
 
-class Loan(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    client_name = db.Column(db.String(100))
-    phone = db.Column(db.String(20))
-    amount = db.Column(db.Integer, default=40000)
-    total = db.Column(db.Integer, default=60000)
-    status = db.Column(db.String(20), default="PENDING")
-    guarantors = db.Column(db.Text)
-    created = db.Column(db.DateTime, default=datetime.utcnow)
-    penalty = db.Column(db.Integer, default=0)
-    collector = db.Column(db.String(50))
+@app.route('/create_loan', methods=['POST'])
+def create_loan():
+    client_name = request.form.get('client_name')
+    amount = request.form.get('amount')
+    loan = {'id': len(loans)+1, 'client_name': client_name, 'amount': amount, 'date': datetime.now(), 'status': 'pending'}
+    loans.append(loan)
+    flash('Loan created successfully!')
+    return redirect(url_for('index'))
 
-with app.app_context():
-    db.create_all()
-    if not User.query.filter_by(role="admin").first():
-        db.session.add(User(name="Admin", phone="0700000000", role="admin", password="1234"))
-        db.session.add(User(name="Collector", phone="0711111111", role="collector", password="1234"))
-        db.session.commit()
+@app.route('/approve_loan/<int:loan_id>', methods=['POST'])
+def approve_loan(loan_id):
+    pin = request.form.get('pin')
+    if pin != '1234':
+        flash('Invalid admin PIN!')
+    else:
+        for loan in loans:
+            if loan['id'] == loan_id:
+                loan['status'] = 'approved'
+                flash('Loan approved!')
+                break
+    return redirect(url_for('index'))
 
-@app.route("/")
-def home():
-    return render_template("home.html")
+@app.route('/collect/<int:loan_id>', methods=['POST'])
+def collect(loan_id):
+    for loan in loans:
+        if loan['id'] == loan_id:
+            loan['status'] = 'collected'
+            flash('Loan collected!')
+            break
+    return redirect(url_for('index'))
 
-@app.route("/privacy")
-def privacy():
-    return render_template("privacy.html")
+@app.route('/export_csv')
+def export_csv():
+    csv_file = os.path.join('loans_export.csv')
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['ID','Client','Amount','Date','Status'])
+        for loan in loans:
+            writer.writerow([loan['id'], loan['client_name'], loan['amount'], loan['date'], loan['status']])
+    flash('CSV exported!')
+    return redirect(url_for('index'))
 
-@app.route("/client/signup", methods=["GET", "POST"])
-def client_signup():
-    if request.method == "POST":
-        u = User(
-            name=request.form["name"],
-            phone=request.form["phone"],
-            password=request.form["password"],
-            role="client"
-        )
-        db.session.add(u)
-        db.session.commit()
-        return redirect("/client/login")
-    return render_template("client_signup.html")
-
-@app.route("/client/login", methods=["GET", "POST"])
-def client_login():
-    if request.method == "POST":
-        u = User.query.filter_by(
-            phone=request.form["phone"],
-            password=request.form["password"],
-            role="client"
-        ).first()
-        if u:
-            session["role"] = "client"
-            return redirect("/client/apply")
-    return render_template("client_login.html")
-
-@app.route("/client/apply", methods=["GET", "POST"])
-def apply():
-    if request.method == "POST":
-        l = Loan(
-            client_name=request.form["name"],
-            phone=request.form["phone"],
-            guarantors=request.form["guarantors"]
-        )
-        db.session.add(l)
-        db.session.commit()
-        return render_template("agreement.html", loan=l)
-    return render_template("apply.html")
-
-@app.route("/staff/login", methods=["GET", "POST"])
-def staff_login():
-    if request.method == "POST":
-        u = User.query.filter_by(
-            phone=request.form["phone"],
-            password=request.form["password"]
-        ).first()
-        if u:
-            session["role"] = u.role
-            return redirect("/admin" if u.role == "admin" else "/collector")
-    return render_template("staff_login.html")
-
-@app.route("/admin")
-def admin():
-    loans = Loan.query.all()
-    return render_template("admin.html", loans=loans)
-
-@app.route("/approve/<int:id>", methods=["POST"])
-def approve(id):
-    l = Loan.query.get_or_404(id)
-    l.status = "APPROVED"
-    db.session.commit()
-    return redirect("/admin")
-
-@app.route("/waive/<int:id>")
-def waive(id):
-    l = Loan.query.get_or_404(id)
-    l.penalty = 0
-    db.session.commit()
-    return redirect("/admin")
-
-@app.route("/collector")
-def collector():
-    loans = Loan.query.all()
-    return render_template("collector.html", loans=loans)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+if __name__ == '__main__':
+    app.run(debug=True)
